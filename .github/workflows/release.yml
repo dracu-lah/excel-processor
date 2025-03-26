@@ -1,0 +1,79 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas openpyxl pyinstaller tk
+
+      - name: Build Windows Executable
+        if: matrix.os == 'windows-latest'
+        run: pyinstaller --onefile --windowed app.py
+
+      - name: Build Linux Executable
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          pyinstaller --onefile --windowed app.py
+          mkdir excel-processor
+          mv dist/app excel-processor/
+          dpkg-deb --build excel-processor
+
+      - name: Upload Windows Executable
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-windows
+          path: dist/app.exe
+
+      - name: Upload Linux Package
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-linux
+          path: excel-processor.deb
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Artifacts (Windows)
+        uses: actions/download-artifact@v3
+        with:
+          name: app-windows
+          path: .
+
+      - name: Download Artifacts (Linux)
+        uses: actions/download-artifact@v3
+        with:
+          name: app-linux
+          path: .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app.exe
+            excel-processor.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
